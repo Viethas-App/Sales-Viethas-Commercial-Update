@@ -2,6 +2,7 @@ import { app, Menu, ipcMain, BrowserWindow } from "electron";
 import { createCapacitorElectronApp } from "@capacitor-community/electron";
 import { autoUpdater } from "electron-updater";
 import { log } from "electron-log";
+import { SerialPort } from 'serialport'
 
 let updater;
 autoUpdater.autoDownload = false
@@ -12,6 +13,8 @@ const myCapacitorApp = createCapacitorElectronApp({
   }
 });
 
+
+//** phần autoupdate */ 
 let win: BrowserWindow;
 function createDefaultWindow() {
   return new Promise((resolve) => {
@@ -50,9 +53,6 @@ function createDefaultWindow() {
     });
   });
 }
-
-
-
 autoUpdater.on('checking-for-update', () => {
   //log('Checking for update...');
 })
@@ -80,8 +80,8 @@ autoUpdater.on('update-downloaded', (info) => {
   win.webContents.send('download_progress', 'success')
 });
 
-// printer
 
+//** phần printer */
 let print: BrowserWindow // khởi tạo cửa sổ để in, ở chế độ ẩn
 function createPrinttWindow() {
   print = new BrowserWindow({
@@ -121,7 +121,7 @@ function initPrintEvent() { // khởi tạo sự kiện in
     const options = {
       silent: true,
       deviceName: printer.deviceName,
-      copies:printer.copies
+      copies: printer.copies
     }
     print.webContents.print(options, (success, errorType) => {
       if (!success) myCapacitorApp.getMainWindow().webContents.send('print-done', false); // gửi sự kiện lên angular nếu in lỗi
@@ -131,13 +131,159 @@ function initPrintEvent() { // khởi tạo sự kiện in
 }
 
 
+//** phần LED */
+var screenController: any;
+
+function scanSerialPort() {
+  ipcMain.on('scanPorts', () => {
+    SerialPort.list().then((ports: any) => {
+      myCapacitorApp.getMainWindow().webContents.send('portsInfor', ports);
+    });
+  });
+}
+
+function connectToScreen() {
+  ipcMain.on('openPort', (event: any, value: any) => {
+    console.log(value)
+    screenController = new SerialPort(
+      {
+        path: value.port,
+        baudRate: value.baudrate,
+        dataBits: 8,
+        parity: 'none',
+      },
+      (err: any) => {
+        if (err) {
+          myCapacitorApp
+            .getMainWindow()
+            .webContents.send('openComStatus', false);
+        } else {
+          console.log('Opened');
+          myCapacitorApp
+            .getMainWindow()
+            .webContents.send('openComStatus', true);
+        }
+      }
+    );
+  });
+}
+
+function checkConnectPort() {
+  ipcMain.on('checkConnectPort', (event: any, value: any) => {
+    myCapacitorApp
+      .getMainWindow()
+      .webContents.send('isConnect', screenController.isOpen());
+  })
+}
+
+function disconnectToScreen() {
+  ipcMain.on('closePort', () => {
+    screenController.close((err: any) => {
+      if (err) {
+        myCapacitorApp
+          .getMainWindow()
+          .webContents.send('closeComStatus', false);
+      } else {
+        myCapacitorApp.getMainWindow().webContents.send('closeComStatus', true);
+      }
+    });
+  });
+}
+
+function writeText() {
+  ipcMain.on('write', (event: any, value: any) => {
+    console.log("write",value)
+    let buffer = Buffer.from(value.text, 'ascii');
+    screenController.write(buffer, (err: any) => {
+      if (err)
+        myCapacitorApp
+          .getMainWindow()
+          .webContents.send('writeStatus', false);
+      else 
+      myCapacitorApp.getMainWindow().webContents.send('writeStatus', true);
+    });
+  });
+}
+
+function cleanAllScreen() {
+  ipcMain.on('clean', () => {
+    let buffer = Buffer.from("0C", 'hex');
+    screenController.write(buffer, (err: any) => {
+      if (err)
+        myCapacitorApp
+          .getMainWindow()
+          .webContents.send('writeStatus', false);
+      else myCapacitorApp.getMainWindow().webContents.send('cleanStatus', true);
+    });
+  });
+}
+
+function writeTextAtPosition() {
+  ipcMain.on('writeLineAtPos', (event: any, value: any) => {
+    console.log("writeLineAtPos",value)
+    if (parseInt(value.position) + value.text.length <= 40) {
+      let buff_ascii: any = [16, value.position];
+      Buffer.from(value.text, 'ascii').forEach(data => { buff_ascii.push(data) });
+      screenController.write(buff_ascii, (err: any) => {
+
+        if (err)
+          myCapacitorApp
+            .getMainWindow()
+            .webContents.send('writeLineStatus', false);
+        console.log("ok2")
+      });
+    }
+  });
+}
+
+function write2LineTextAtPosition() {
+  ipcMain.on('writeLinesAtPos', (event: any, value: any) => {
+    console.log("writeLinesAtPos",value)
+    if (
+      parseInt(value.position) + value.textLine1.length <= 20 &&
+      parseInt(value.position) + value.textLine2.length <= 20
+    ) {
+      let buff1_ascii: any = [16, value.position];
+      Buffer.from(value.textLine1, 'ascii').forEach(data => { buff1_ascii.push(data) });
+      screenController.write(buff1_ascii, (err: any) => {
+        if (err)
+          myCapacitorApp
+            .getMainWindow()
+            .webContents.send('writeLinesStatus', false);
+      });
+      let buff2_ascii: any = [16, (parseInt(value.position) + 20)];
+      Buffer.from(value.textLine2, 'ascii').forEach(data => { buff2_ascii.push(data) });
+      screenController.write(buff2_ascii, (err: any) => {
+        if (err)
+          myCapacitorApp
+            .getMainWindow()
+            .webContents.send('writeLinesStatus', false)
+        else
+          console.log("ok3")
+        myCapacitorApp.getMainWindow().webContents.send('writeLinesStatus', true);
+      });
+    }
+  });
+}
+
+
 
 app.on('ready', function () {
   myCapacitorApp.init()
   // Create the Menu
   Menu.setApplicationMenu(null);
-  createPrinttWindow()
   autoUpdater.checkForUpdates();
+  createPrinttWindow()
+  initPrintEvent()
+  scanSerialPort()
+  connectToScreen()
+  disconnectToScreen()
+  cleanAllScreen()
+  writeText()
+  writeTextAtPosition()
+  write2LineTextAtPosition()
+  checkConnectPort()
+ 
 });
 app.on('window-all-closed', () => {
   app.quit();
