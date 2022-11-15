@@ -9,7 +9,11 @@ autoUpdater.autoDownload = false
 // The MainWindow object can be accessed via myCapacitorApp.getMainWindow()
 const myCapacitorApp = createCapacitorElectronApp({
   mainWindow: {
-    windowOptions: { minHeight: 768, minWidth: 1024 }
+    windowOptions: { minHeight: 768, minWidth: 1024 ,
+      webPreferences: {
+        nodeIntegration: true,
+        nativeWindowOpen:true,
+      }}
   }
 });
 
@@ -27,7 +31,7 @@ function createDefaultWindow() {
       show: true,
       parent: myCapacitorApp.getMainWindow(),
       webPreferences: {
-        nodeIntegration: true
+        nodeIntegration: true,
       }
 
     });
@@ -274,7 +278,7 @@ app.on('ready', function () {
   Menu.setApplicationMenu(null);
   autoUpdater.checkForUpdates();
   createPrinttWindow()
-  initPrintEvent()
+  //initPrintEvent()
   scanSerialPort()
   connectToScreen()
   disconnectToScreen()
