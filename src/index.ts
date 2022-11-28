@@ -13,6 +13,7 @@ const myCapacitorApp = createCapacitorElectronApp({
       webPreferences: {
         nodeIntegration: true,
         nativeWindowOpen:true,
+        contextIsolation:true,
       }}
   }
 });
